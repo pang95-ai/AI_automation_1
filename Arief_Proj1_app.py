@@ -1,6 +1,7 @@
 # app.py
 
 import datetime as dt
+
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
@@ -10,10 +11,10 @@ import streamlit as st
 # -----------------------------
 # 1. Page config
 # -----------------------------
-
 st.set_page_config(
-    page_title="Arief Stock / ETF Dashboard",
-    layout="wide",)
+    page_title="Stock / ETF Dashboard",
+    layout="wide",
+)
 
 st.title("📈 Stock & ETF Dashboard")
 
@@ -21,7 +22,6 @@ st.title("📈 Stock & ETF Dashboard")
 # -----------------------------
 # 2. Sidebar controls
 # -----------------------------
-
 st.sidebar.header("Controls")
 
 # Ticker input
@@ -32,7 +32,12 @@ default_start = dt.date.today() - dt.timedelta(days=365)
 default_end = dt.date.today()
 
 start_date = st.sidebar.date_input("Start date", value=default_start)
+if isinstance(start_date, (list, tuple)):
+    start_date = start_date[0]
+
 end_date = st.sidebar.date_input("End date", value=default_end)
+if isinstance(end_date, (list, tuple)):
+    end_date = end_date[0]
 
 # Metrics selection
 metrics = st.sidebar.multiselect(
@@ -52,16 +57,15 @@ fetch_button = st.sidebar.button("Fetch data")
 # -----------------------------
 # 3. Helper: download data
 # -----------------------------
-
 @st.cache_data
 def load_data(ticker_symbol: str, start: dt.date, end: dt.date) -> pd.DataFrame:
     df = yf.download(ticker_symbol, start=start, end=end)
     return df
 
+
 # -----------------------------
 # 4. Main logic
 # -----------------------------
-
 if fetch_button:
     if not ticker:
         st.error("Please enter a ticker symbol.")
@@ -76,63 +80,72 @@ if fetch_button:
     # Reset index so Date becomes a column for Plotly
     data = data.reset_index()
 
-# -----------------------------
-# 5. Compute rolling averages
-# -----------------------------
+    # -----------------------------
+    # 5. Compute rolling averages
+    # -----------------------------
+    data[f"MA_{ma_short}"] = data["Close"].rolling(window=ma_short).mean()
+    data[f"MA_{ma_long}"] = data["Close"].rolling(window=ma_long).mean()
 
-data[f"MA_{ma_short}"] = data["Close"].rolling(window=ma_short).mean()
-data[f"MA_{ma_long}"] = data["Close"].rolling(window=ma_long).mean()
+if "Close" not in data.columns:
+    st.error("This ticker does not contain a 'Close' price column.")
+    st.stop()
 
-st.subheader(f"Raw data for {ticker}")
-st.dataframe(data.tail())
+    st.subheader(f"Raw data for {ticker}")
+    st.dataframe(data.tail())
 
-# -----------------------------
-# 6. Download CSV (bonus)
-# -----------------------------
-  
-csv = data.to_csv(index=False).encode("utf-8")
-st.download_button(label="Download data as CSV",
-data=csv,file_name=f"{ticker}_{start_date}_{end_date}.csv",
-        mime="text/csv",)
+    # -----------------------------
+    # 6. Download CSV (bonus)
+    # -----------------------------
+    csv = data.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download data as CSV",
+        data=csv,
+        file_name=f"{ticker}_{start_date}_{end_date}.csv",
+        mime="text/csv",
+    )
 
-# -----------------------------
-# 7. Price chart with Moving Averages
-# -----------------------------
-    
-if "Close" in metrics:
-    st.subheader("Price & Moving Averages")
+    # -----------------------------
+    # 7. Price chart with MAs
+    # -----------------------------
+    if "Close" in metrics:
+        st.subheader("Price & Moving Averages")
 
-    fig_price = px.line(data,x="Date",
-    y="Close",title=f"{ticker} Closing Price",)
+        fig_price = px.line(
+            data,
+            x="Date",
+            y="Close",
+            title=f"{ticker} Closing Price",
+        )
 
-# Add moving averages
-    fig_price.add_scatter(
+        # Add moving averages
+        fig_price.add_scatter(
             x=data["Date"],
             y=data[f"MA_{ma_short}"],
             mode="lines",
             name=f"MA {ma_short}",
         )
-    fig_price.add_scatter(
+        fig_price.add_scatter(
             x=data["Date"],
             y=data[f"MA_{ma_long}"],
             mode="lines",
-            name=f"MA {ma_long}",)
+            name=f"MA {ma_long}",
+        )
 
-    fig_price.update_layout(xaxis_title="Date", yaxis_title="Price")
-    st.plotly_chart(fig_price, use_container_width=True)
+        fig_price.update_layout(xaxis_title="Date", yaxis_title="Price")
+        st.plotly_chart(fig_price, use_container_width=True)
 
-    # Bonus: download chart as HTML
-    price_html = fig_price.to_html(include_plotlyjs="cdn")
-    st.download_button(
+        # Bonus: download chart as HTML
+        price_html = fig_price.to_html(include_plotlyjs="cdn")
+        st.download_button(
             label="Download price chart as HTML",
             data=price_html,
             file_name=f"{ticker}_price_chart.html",
-            mime="text/html",)
+            mime="text/html",
+        )
 
-# -----------------------------
-# 8. Volume chart
-# -----------------------------
-
+    # -----------------------------
+    # 8. Volume chart
+    # -----------------------------
     if "Volume" in metrics and "Volume" in data.columns:
         st.subheader("Volume")
 
@@ -140,8 +153,8 @@ if "Close" in metrics:
             data,
             x="Date",
             y="Volume",
-            title=f"{ticker} Volume",)
-
+            title=f"{ticker} Volume",
+        )
         fig_vol.update_layout(xaxis_title="Date", yaxis_title="Volume")
         st.plotly_chart(fig_vol, use_container_width=True)
 
@@ -150,12 +163,12 @@ if "Close" in metrics:
             label="Download volume chart as HTML",
             data=vol_html,
             file_name=f"{ticker}_volume_chart.html",
-            mime="text/html",)
+            mime="text/html",
+        )
 
-# -----------------------------
-# 9. Other selected metrics
-# -----------------------------
-
+    # -----------------------------
+    # 9. Other selected metrics
+    # -----------------------------
     other_metrics = [m for m in metrics if m not in ["Close", "Volume"]]
     if other_metrics:
         st.subheader("Other metrics")
@@ -166,11 +179,13 @@ if "Close" in metrics:
                     data,
                     x="Date",
                     y=m,
-                    title=f"{ticker} {m}",)
+                    title=f"{ticker} {m}",
+                )
                 fig.update_layout(xaxis_title="Date", yaxis_title=m)
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"{m} not available in data.")
+
 
 else:
     st.info("Set your options in the sidebar and click **Fetch data** to begin.")
